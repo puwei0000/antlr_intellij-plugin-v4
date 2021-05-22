@@ -8,10 +8,10 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
-import org.antlr.intellij.adaptor.parser.SyntaxError;
 import org.antlr.intellij.adaptor.parser.SyntaxErrorListener;
 import org.antlr.intellij.plugin.ANTLRv4PluginController;
 import org.antlr.intellij.plugin.PluginIgnoreMissingTokensFileErrorManager;
+import org.antlr.intellij.plugin.configdialogs.ANTLRv4GrammarProperties;
 import org.antlr.intellij.plugin.parser.ANTLRv4Lexer;
 import org.antlr.intellij.plugin.parser.ANTLRv4Parser;
 import org.antlr.intellij.plugin.preview.PreviewState;
@@ -19,10 +19,8 @@ import org.antlr.runtime.ANTLRStringStream;
 import org.antlr.v4.Tool;
 import org.antlr.v4.parse.ANTLRParser;
 import org.antlr.v4.runtime.*;
-import org.antlr.v4.runtime.InputMismatchException;
 import org.antlr.v4.runtime.atn.PredictionMode;
 import org.antlr.v4.runtime.misc.Pair;
-import org.antlr.v4.runtime.misc.Predicate;
 import org.antlr.v4.runtime.misc.Utils;
 import org.antlr.v4.runtime.tree.ParseTree;
 import org.antlr.v4.runtime.tree.TerminalNode;
@@ -39,6 +37,8 @@ import org.jetbrains.annotations.Nullable;
 import java.io.File;
 import java.io.IOException;
 import java.util.*;
+
+import static org.antlr.intellij.plugin.configdialogs.ANTLRv4GrammarPropertiesStore.getGrammarProperties;
 
 public class ParsingUtils {
 	public static Grammar BAD_PARSER_GRAMMAR;
@@ -102,13 +102,10 @@ public class ParsingUtils {
 	}
 
 	public static Token getTokenUnderCursor(CommonTokenStream tokens, int offset) {
-		Comparator<Token> cmp = new Comparator<Token>() {
-			@Override
-			public int compare(Token a, Token b) {
-				if ( a.getStopIndex() < b.getStartIndex() ) return -1;
-				if ( a.getStartIndex() > b.getStopIndex() ) return 1;
-				return 0;
-			}
+		Comparator<Token> cmp = (a, b) -> {
+			if ( a.getStopIndex() < b.getStartIndex() ) return -1;
+			if ( a.getStartIndex() > b.getStopIndex() ) return 1;
+			return 0;
 		};
 		if ( offset<0 || offset >= tokens.getTokenSource().getInputStream().size() ) return null;
 		CommonToken key = new CommonToken(Token.INVALID_TYPE, "");
@@ -140,7 +137,7 @@ public class ParsingUtils {
 					inputStream = tokenSource.getInputStream();
 				}
 				tokenUnderCursor = new org.antlr.v4.runtime.CommonToken(
-					new Pair<TokenSource, CharStream>(tokenSource, inputStream),
+					new Pair<>(tokenSource, inputStream),
 					Token.INVALID_TYPE,
 					-1,
 					prevToken!=null ? prevToken.getStopIndex()+1 : 0,
@@ -157,28 +154,8 @@ public class ParsingUtils {
 		return tokenUnderCursor;
 	}
 
-	public static SyntaxError getErrorUnderCursor(java.util.List<SyntaxError> errors, int offset) {
-		for (SyntaxError e : errors) {
-			int a, b;
-			RecognitionException cause = e.getException();
-			if ( cause instanceof LexerNoViableAltException) {
-				a = ((LexerNoViableAltException) cause).getStartIndex();
-				b = ((LexerNoViableAltException) cause).getStartIndex()+1;
-			}
-			else {
-				Token offendingToken = (Token)e.getOffendingSymbol();
-				a = offendingToken.getStartIndex();
-				b = offendingToken.getStopIndex()+1;
-			}
-			if ( offset >= a && offset < b ) { // cursor is over some kind of error
-				return e;
-			}
-		}
-		return null;
-	}
-
 	public static CommonTokenStream tokenizeANTLRGrammar(String text) {
-		ANTLRInputStream input = new ANTLRInputStream(text);
+		CodePointCharStream input = CharStreams.fromString(text);
 		ANTLRv4Lexer lexer = new ANTLRv4Lexer(input);
 		CommonTokenStream tokens = new TokenStreamSubset(lexer);
 		tokens.fill();
@@ -201,7 +178,7 @@ public class ParsingUtils {
     }
 
     public static ParsingResult parseANTLRGrammar(String text) {
-	    ANTLRInputStream input = new ANTLRInputStream(text);
+	    CodePointCharStream input = CharStreams.fromString(text);
 		ANTLRv4Lexer lexer = new ANTLRv4Lexer(input);
 		CommonTokenStream tokens = new TokenStreamSubset(lexer);
 		ANTLRv4Parser parser = new ANTLRv4Parser(tokens);
@@ -216,46 +193,15 @@ public class ParsingUtils {
 		return new ParsingResult(parser, t, listener);
 	}
 
-	/** Parse grammar text into v4 parse tree then look for tokenVocab=X */
-	public static String getTokenVocabFromGrammar(String text) {
-		// TODO: unneeded. use antlr Tool. Kill?
-//		ParsingResult r = parseANTLRGrammar(text);
-//		if ( r.tree!=null ) { //&& r.syntaxErrorListener.getSyntaxErrors().size()==0 ) {
-//			// option : id ASSIGN optionValue ;
-//			Collection<ParseTree> options = XPath.findAll(r.tree, "//option", r.parser);
-//			for (Iterator<ParseTree> it = options.iterator(); it.hasNext(); ) {
-//				ANTLRv4Parser.OptionContext option = (ANTLRv4Parser.OptionContext)it.next();
-//				if ( option.id().getText().equals("tokenVocab") ) {
-//					/*
-//					optionValue
-//						:	id (DOT id)*
-//						|	STRING_LITERAL
-//						|	ACTION
-//						|	INT
-//						;
-//					 */
-//					ANTLRv4Parser.OptionValueContext optionValue = option.optionValue();
-//					if ( optionValue.STRING_LITERAL()!=null ) {
-//						String s = optionValue.STRING_LITERAL().getText();
-//						return RefactorUtils.getLexerRuleNameFromLiteral(s);
-//					}
-//					if ( optionValue.id(0)!=null ) {
-//						return optionValue.id(0).getText();
-//					}
-//				}
-//			}
-//		}
-		return null;
-	}
-
 	public static ParsingResult parseText(Grammar g,
 										  LexerGrammar lg,
 										  String startRuleName,
 										  final VirtualFile grammarFile,
-										  String inputText)
-		throws IOException
-	{
-		ANTLRInputStream input = new ANTLRInputStream(inputText);
+										  String inputText,
+										  Project project) {
+		ANTLRv4GrammarProperties grammarProperties = getGrammarProperties(project, grammarFile);
+		CharStream input = grammarProperties.getCaseChangingStrategy()
+				.applyTo(CharStreams.fromString(inputText, grammarFile.getPath()));
 		LexerInterpreter lexEngine;
 		lexEngine = lg.createLexerInterpreter(input);
 		SyntaxErrorListener syntaxErrorListener = new SyntaxErrorListener();
@@ -271,9 +217,7 @@ public class ParsingUtils {
 										  final VirtualFile grammarFile,
 										  SyntaxErrorListener syntaxErrorListener,
 										  TokenStream tokens,
-										  int startIndex)
-		throws IOException
-	{
+										  int startIndex) {
 		if ( g==null || lg==null ) {
 			ANTLRv4PluginController.LOG.info("parseText can't parse: missing lexer or parser no Grammar object for " +
 											 (grammarFile != null ? grammarFile.getName() : "<unknown file>"));
@@ -303,7 +247,6 @@ public class ParsingUtils {
 		if ( start==null ) {
 			return null; // can't find start rule
 		}
-//		System.out.println("parse test ----------------------------");
 		ParseTree t = parser.parse(start.index);
 
 		if ( t!=null ) {
@@ -312,24 +255,25 @@ public class ParsingUtils {
 		return null;
 	}
 
-	public static Tool createANTLRToolForLoadingGrammars() {
+	public static Tool createANTLRToolForLoadingGrammars(ANTLRv4GrammarProperties grammarProperties) {
 		Tool antlr = new Tool();
 		antlr.errMgr = new PluginIgnoreMissingTokensFileErrorManager(antlr);
 		antlr.errMgr.setFormat("antlr");
 		LoadGrammarsToolListener listener = new LoadGrammarsToolListener(antlr);
 		antlr.removeListeners();
 		antlr.addListener(listener);
+		antlr.libDirectory = grammarProperties.getLibDir();
 		return antlr;
 	}
 
 	/** Get lexer and parser grammars */
 	public static Grammar[] loadGrammars(VirtualFile grammarFile, Project project) {
 		ANTLRv4PluginController.LOG.info("loadGrammars "+grammarFile.getPath()+" "+project.getName());
-		Tool antlr = createANTLRToolForLoadingGrammars();
+		Tool antlr = createANTLRToolForLoadingGrammars(getGrammarProperties(project, grammarFile));
 		LoadGrammarsToolListener listener = (LoadGrammarsToolListener)antlr.getListeners().get(0);
 
 		ConsoleView console = ANTLRv4PluginController.getInstance(project).getConsole();
-		Grammar g = loadGrammar(grammarFile, project, antlr);
+		Grammar g = loadGrammar(grammarFile, antlr);
 		if (g == null) {
 			reportBadGrammar(grammarFile, console);
 			return null;
@@ -382,10 +326,10 @@ public class ParsingUtils {
 	}
 
 	@Nullable
-	private static Grammar loadGrammar(VirtualFile grammarFile, Project project, Tool antlr) {
+	private static Grammar loadGrammar(VirtualFile grammarFile, Tool antlr) {
 		// basically here I am mimicking the loadGrammar() method from Tool
 		// so that I can check for an empty AST coming back.
-		GrammarRootAST grammarRootAST = parseGrammar(project, antlr, grammarFile);
+		GrammarRootAST grammarRootAST = parseGrammar(antlr, grammarFile);
 		if ( grammarRootAST==null ) {
 			return null;
 		}
@@ -397,7 +341,7 @@ public class ParsingUtils {
 		return g;
 	}
 
-	public static GrammarRootAST parseGrammar(Project project, Tool antlr, VirtualFile grammarFile) {
+	public static GrammarRootAST parseGrammar(Tool antlr, VirtualFile grammarFile) {
 		try {
 			Document document = FileDocumentManager.getInstance().getDocument(grammarFile);
 			String grammarText = document != null ? document.getText() : new String(grammarFile.contentsToByteArray());
@@ -419,7 +363,7 @@ public class ParsingUtils {
 	 *     	XLexer given grammar name X
 	 */
 	public static LexerGrammar loadLexerGrammarFor(Grammar g, Project project) {
-		Tool antlr = createANTLRToolForLoadingGrammars();
+		Tool antlr = createANTLRToolForLoadingGrammars(getGrammarProperties(project, g.fileName));
 		LoadGrammarsToolListener listener = (LoadGrammarsToolListener)antlr.getListeners().get(0);
 		LexerGrammar lg = null;
 		VirtualFile lexerGrammarFile;
@@ -437,7 +381,7 @@ public class ParsingUtils {
 			ConsoleView console = ANTLRv4PluginController.getInstance(project).getConsole();
 
 			try {
-				lg = (LexerGrammar) loadGrammar(lexerGrammarFile, project, antlr);
+				lg = (LexerGrammar) loadGrammar(lexerGrammarFile, antlr);
 				if ( lg!=null ) {
 					antlr.process(lg, false);
 				} else {
@@ -481,69 +425,25 @@ public class ParsingUtils {
 		return lexerGrammarFileName;
 	}
 
-	/** Same as loadGrammar(fileName) except import vocab from existing lexer */
-//	public static Grammar loadGrammar(Tool tool, String fileName, LexerGrammar lexerGrammar) {
-//		GrammarRootAST grammarRootAST = parseGrammar(fileName);
-//		if ( grammarRootAST==null ) return null;
-//		final Grammar g = tool.createGrammar(grammarRootAST);
-//		g.fileName = fileName;
-//		if ( lexerGrammar!=null ) {
-//            g.importVocab(lexerGrammar);
-//        }
-//		tool.process(g, false);
-//		return g;
-//	}
-
 	public static Tree findOverriddenDecisionRoot(Tree ctx) {
-		return Trees.findNodeSuchThat(ctx, new Predicate<Tree>() {
-			@Override
-			public boolean test(Tree t) {
-				return t instanceof PreviewInterpreterRuleContext ?
-					((PreviewInterpreterRuleContext) t).isDecisionOverrideRoot() :
-					false;
-			}
-		});
+		return Trees.findNodeSuchThat(
+				ctx,
+				t -> t instanceof PreviewInterpreterRuleContext && ((PreviewInterpreterRuleContext) t).isDecisionOverrideRoot()
+		);
 	}
 
-	public static List<Tree> getAllLeaves(Tree t,
-								final int startIndex,
-								final int stopIndex)
-	{
-		List<Tree> leaves = new ArrayList<Tree>();
-		_getAllLeaves(t, leaves, startIndex, stopIndex);
-		return leaves;
-	}
-
-	public static void _getAllLeaves(Tree t, List<? super Tree> leaves,
-								final int startIndex,
-								final int stopIndex)
-	{
-		int n = t.getChildCount();
-		if ( n==0 ) { // must be leaf
-			Token tok = ((TerminalNode)t).getSymbol();
-			int i = tok.getTokenIndex();
-			if ( i>=startIndex && i<=stopIndex && tok.getType() != Token.INVALID_TYPE ) {
-				leaves.add(t);
-			}
-			return;
-		}
-		for (int i = 0 ; i < n ; i++){
-			_getAllLeaves(t.getChild(i), leaves, startIndex, stopIndex);
-		}
-	}
-
-	public static List<Tree> getAllLeaves(Tree t) {
-		List<Tree> leaves = new ArrayList<Tree>();
+	public static List<TerminalNode> getAllLeaves(Tree t) {
+		List<TerminalNode> leaves = new ArrayList<>();
 		_getAllLeaves(t, leaves);
 		return leaves;
 	}
 
-	public static void _getAllLeaves(Tree t, List<? super Tree> leaves) {
+	private static void _getAllLeaves(Tree t, List<TerminalNode> leaves) {
 		int n = t.getChildCount();
 		if ( t instanceof TerminalNode ) {
 			Token tok = ((TerminalNode)t).getSymbol();
 			if ( tok.getType() != Token.INVALID_TYPE ) {
-				leaves.add(t);
+				leaves.add((TerminalNode) t);
 			}
 			return;
 		}
@@ -552,38 +452,10 @@ public class ParsingUtils {
 		}
 	}
 
-//	public static TerminalNode getLeftmostLeaf(Tree t) {
-//		int n = t.getChildCount();
-//		if ( n==0 ) { // must be leaf
-//			return (TerminalNode)t;
-//		}
-//		for (int i = 0 ; i < n ; i++){
-//			TerminalNode found = getLeftmostLeaf(t.getChild(i));
-//			if ( found!=null ) return found;
-//		}
-//		return null; // none
-//	}
-//
-//	public static TerminalNode getRightmostLeaf(Tree t) {
-//		int n = t.getChildCount();
-//		if ( n==0 ) { // must be leaf
-//			return (TerminalNode)t;
-//		}
-//		Tree lastChild = t.getChild(n - 1);
-//		if ( lastChild instanceof TerminalNode ) {
-//			return (TerminalNode)lastChild;
-//		}
-//		for (int i = 0 ; i < n ; i++) {
-//			TerminalNode found = getLeftmostLeaf(t.getChild(i));
-//			if ( found!=null ) return found;
-//		}
-//		return null; // none
-//	}
-
 	/** Get ancestors where the first element of the list is the parent of t */
 	public static List<? extends Tree> getAncestors(Tree t) {
 		if ( t.getParent()==null ) return Collections.emptyList();
-		List<Tree> ancestors = new ArrayList<Tree>();
+		List<Tree> ancestors = new ArrayList<>();
 		t = t.getParent();
 		while ( t!=null ) {
 			ancestors.add(t); // insert at start
@@ -592,35 +464,4 @@ public class ParsingUtils {
 		return ancestors;
 	}
 
-	public static class TrackingErrorStrategy extends DefaultErrorStrategy {
-		public int firstErrorTokenIndex = -1;
-		@Override
-		public void recover(Parser recognizer, RecognitionException e) {
-			int errIndex = recognizer.getInputStream().index();
-			if ( firstErrorTokenIndex == -1 ) {
-				firstErrorTokenIndex = errIndex; // latch
-			}
-//			System.err.println("recover: error at " + errIndex);
-			TokenStream input = recognizer.getInputStream();
-			if ( input.index()<input.size()-1 ) { // don't consume() eof
-				recognizer.consume(); // just kill this bad token and let it continue.
-			}
-		}
-
-		@Override
-		public Token recoverInline(Parser recognizer) throws RecognitionException {
-			int errIndex = recognizer.getInputStream().index();
-			if ( firstErrorTokenIndex == -1 ) {
-				firstErrorTokenIndex = errIndex; // latch
-			}
-//			System.err.println("recoverInline: error at " + errIndex);
-			InputMismatchException e = new InputMismatchException(recognizer);
-			TokenStream input = recognizer.getInputStream(); // seek EOF
-			input.seek(input.size() - 1);
-			throw e; // throw after seek so exception has bad token
-		}
-
-		@Override
-		public void sync(Parser recognizer) { }
-	}
 }

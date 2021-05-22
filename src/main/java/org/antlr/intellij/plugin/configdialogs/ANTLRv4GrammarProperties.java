@@ -1,137 +1,142 @@
 package org.antlr.intellij.plugin.configdialogs;
 
-import com.intellij.ide.util.PropertiesComponent;
+import com.intellij.openapi.components.PathMacroManager;
 import com.intellij.openapi.project.Project;
-import org.apache.commons.lang.StringUtils;
-import org.jetbrains.annotations.NotNull;
+import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.util.xmlb.annotations.OptionTag;
+import com.intellij.util.xmlb.annotations.Property;
+import com.intellij.util.xmlb.annotations.Tag;
+import org.antlr.intellij.plugin.parsing.CaseChangingStrategy;
+import org.antlr.intellij.plugin.parsing.RunANTLROnGrammarFile;
 
-public class ANTLRv4GrammarProperties {
-    public static final String PROP_AUTO_GEN = "auto-gen";
-    public static final String PROP_OUTPUT_DIR = "output-dir";
-    public static final String PROP_LIB_DIR = "lib-dir";
-    public static final String PROP_ENCODING = "encoding";
-    public static final String PROP_PACKAGE = "package";
+import java.io.File;
+
+import static org.apache.commons.lang.StringUtils.isNotBlank;
+
+/**
+ * Holds all the settings related to a given grammar file. These settings
+ * can be used during code generation, in the Preview window etc.
+ * <p>
+ * Settings can be modified via a user interface in {@link ConfigANTLRPerGrammar}
+ * and are saved in {@code .idea/misc.xml} thanks to {@link ANTLRv4GrammarPropertiesComponent}.
+ */
+@Tag("PerGrammarGenerationSettings")
+public class ANTLRv4GrammarProperties implements Cloneable {
+
     public static final String PROP_LANGUAGE = "language";
-    public static final String PROP_GEN_LISTENER = "gen-listener";
-    public static final String PROP_GEN_VISITOR = "gen-visitor";
     static final String PROJECT_SETTINGS_PREFIX = "*";
 
-    static boolean shouldGenerateParseTreeVisitor(String qualFileName, PropertiesComponent props) {
-        return props.getBoolean(getPropNameForFile(qualFileName, PROP_GEN_VISITOR), false);
+    @Property
+    String fileName;
+
+    @Property
+    boolean autoGen;
+
+    @Property
+    String outputDir;
+
+    @Property
+    String libDir;
+
+    @Property
+    String encoding;
+
+    @Property
+    String pkg;
+
+    @Property
+    String language;
+
+    @Property
+    boolean generateListener = true;
+
+    @Property
+    boolean generateVisitor;
+
+    @Property
+    @OptionTag(converter = CaseChangingStrategyConverter.class)
+    CaseChangingStrategy caseChangingStrategy = CaseChangingStrategy.LEAVE_AS_IS;
+
+    public ANTLRv4GrammarProperties() {
     }
 
-    static boolean shouldGenerateParseTreeListener(String qualFileName, PropertiesComponent props) {
-        return props.getBoolean(getPropNameForFile(qualFileName, PROP_GEN_LISTENER), true);
+    public ANTLRv4GrammarProperties(ANTLRv4GrammarProperties source) {
+        this.fileName = source.fileName;
+        this.autoGen = source.autoGen;
+        this.outputDir = source.outputDir;
+        this.libDir = source.libDir;
+        this.encoding = source.encoding;
+        this.pkg = source.pkg;
+        this.language = source.language;
+        this.generateListener = source.generateListener;
+        this.generateVisitor = source.generateVisitor;
+        this.caseChangingStrategy = source.caseChangingStrategy;
     }
 
-    @NotNull
-    static String getLanguage(String qualFileName, PropertiesComponent props) {
-        return props.getValue(getPropNameForFile(qualFileName, PROP_LANGUAGE), "");
+    public boolean shouldAutoGenerateParser() {
+        return autoGen;
     }
 
-    @NotNull
-    static String getPackage(String qualFileName, PropertiesComponent props) {
-        return props.getValue(getPropNameForFile(qualFileName, PROP_PACKAGE), "");
+    public String getOutputDir() {
+        return outputDir;
     }
 
-    @NotNull
-    static String getEncoding(String qualFileName, PropertiesComponent props) {
-        return props.getValue(getPropNameForFile(qualFileName, PROP_ENCODING), "");
+    public String getLibDir() {
+        return libDir;
     }
 
-    @NotNull
-    static String getLibDir(String qualFileName, PropertiesComponent props) {
-        return props.getValue(getPropNameForFile(qualFileName, PROP_LIB_DIR), "");
+    public String getEncoding() {
+        return encoding;
     }
 
-    @NotNull
-    static String getOutputDir(String qualFileName, PropertiesComponent props) {
-        return props.getValue(getPropNameForFile(qualFileName, PROP_OUTPUT_DIR), "");
+    public String getPackage() {
+        return pkg;
     }
 
-    static boolean shouldAutoGenerateParser(String qualFileName, PropertiesComponent props) {
-        return props.getBoolean(getPropNameForFile(qualFileName, PROP_AUTO_GEN), false);
+    public String getLanguage() {
+        return language;
     }
 
-    static void setGenerateParseTreeVisitor(PropertiesComponent props, String qualFileName, boolean generateParseTreeVisitor) {
-        props.setValue(getPropNameForFile(qualFileName, PROP_GEN_VISITOR),
-                String.valueOf(generateParseTreeVisitor));
+    public boolean shouldGenerateParseTreeListener() {
+        return generateListener;
     }
 
-    static void setGenerateParseTreeListener(PropertiesComponent props, String qualFileName, boolean generateParseTreeListener) {
-        props.setValue(getPropNameForFile(qualFileName, PROP_GEN_LISTENER),
-                String.valueOf(generateParseTreeListener));
+    public boolean shouldGenerateParseTreeVisitor() {
+        return generateVisitor;
     }
 
-    static void setLanguage(PropertiesComponent props, String language, String qualFileName) {
-        if (language.trim().length() > 0) {
-            props.setValue(getPropNameForFile(qualFileName, PROP_LANGUAGE), language);
-        } else {
-            props.unsetValue(getPropNameForFile(qualFileName, PROP_LANGUAGE));
+    public CaseChangingStrategy getCaseChangingStrategy() {
+        return caseChangingStrategy;
+    }
+
+    public String resolveOutputDirName(Project project, VirtualFile contentRoot, String package_) {
+        String outputDirName = outputDir.isEmpty() ? RunANTLROnGrammarFile.OUTPUT_DIR_NAME : outputDir;
+
+        outputDirName = PathMacroManager.getInstance(project).expandPath(outputDirName);
+
+        File f = new File(outputDirName);
+        if (!f.isAbsolute()) { // if not absolute file spec, it's relative to project root
+            outputDirName = contentRoot.getPath() + File.separator + outputDirName;
         }
-    }
-
-    static void setPackageName(PropertiesComponent props, String packageName, String qualFileName) {
-        if (packageName.trim().length() > 0) {
-            props.setValue(getPropNameForFile(qualFileName, PROP_PACKAGE), packageName);
-        } else {
-            props.unsetValue(getPropNameForFile(qualFileName, PROP_PACKAGE));
+        // add package if any
+        if ( isNotBlank(package_) ) {
+            outputDirName += File.separator + package_.replace('.', File.separatorChar);
         }
+        return outputDirName;
     }
 
-    static void setAutoGen(PropertiesComponent props, String qualFileName, boolean generateParseTreeVisitor) {
-        props.setValue(getPropNameForFile(qualFileName, PROP_AUTO_GEN), String.valueOf(generateParseTreeVisitor));
-    }
+    public String resolveLibDir(Project project, String defaultValue) {
+        String libDir = getLibDir();
 
-    static void setFileEncoding(PropertiesComponent props, String fileEncoding, String qualFileName) {
-        if (fileEncoding.trim().length() > 0) {
-            props.setValue(getPropNameForFile(qualFileName, PROP_ENCODING), fileEncoding);
-        } else {
-            props.unsetValue(getPropNameForFile(qualFileName, PROP_ENCODING));
-        }
-    }
-
-    static void setLibDir(PropertiesComponent props, String libDir, String qualFileName) {
-        if (libDir.trim().length() > 0) {
-            props.setValue(getPropNameForFile(qualFileName, PROP_LIB_DIR), libDir);
-        } else {
-            props.unsetValue(getPropNameForFile(qualFileName, PROP_LIB_DIR));
-        }
-    }
-
-    static void setOutputDir(PropertiesComponent props, String outputDir, String qualFileName) {
-        if (outputDir.trim().length() > 0) {
-            props.setValue(getPropNameForFile(qualFileName, PROP_OUTPUT_DIR), outputDir);
-        } else {
-            props.unsetValue(getPropNameForFile(qualFileName, PROP_OUTPUT_DIR));
-        }
-    }
-
-    public static String getPropNameForFile(String qualFileName, String prop) {
-        return qualFileName + "::/" + prop;
-    }
-
-    public static String getProp(Project project, String qualFileName, String name, String defaultValue) {
-        PropertiesComponent props = PropertiesComponent.getInstance(project);
-        return getPropertyValueForFile(props, qualFileName, name, defaultValue);
-    }
-
-    static String getPropertyValueForFile(PropertiesComponent props, String qualFileName, String name, String defaultValue) {
-        String propertyValue = props.getValue(getPropNameForFile(qualFileName, name));
-        if (!StringUtils.isEmpty(propertyValue)) {
-            return propertyValue;
-        }
-
-        String projectPropertyValue = props.getValue(getPropNameForFile(PROJECT_SETTINGS_PREFIX, name));
-        if (!StringUtils.isEmpty(projectPropertyValue)) {
-            return projectPropertyValue;
+        if ( libDir==null || libDir.equals("") ) {
+            libDir = defaultValue;
         }
 
-        return defaultValue;
+        return PathMacroManager.getInstance(project).expandPath(libDir);
     }
 
-    public static boolean getBooleanProp(Project project, String qualFileName, String name, boolean defaultValue) {
-		PropertiesComponent props = PropertiesComponent.getInstance(project);
-		return props.getBoolean(getPropNameForFile(qualFileName, name), defaultValue);
-	}
+    @Override
+    public ANTLRv4GrammarProperties clone() throws CloneNotSupportedException {
+        return (ANTLRv4GrammarProperties) super.clone();
+    }
 }

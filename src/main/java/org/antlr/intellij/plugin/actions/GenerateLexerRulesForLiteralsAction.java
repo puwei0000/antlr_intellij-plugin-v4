@@ -69,7 +69,7 @@ public class GenerateLexerRulesForLiteralsAction extends AnAction {
 		final Parser parser = results.parser;
 		final ParseTree tree = results.tree;
 		Collection<ParseTree> literalNodes = XPath.findAll(tree, "//ruleBlock//STRING_LITERAL", parser);
-		LinkedHashMap<String, String> lexerRules = new LinkedHashMap<String, String>();
+		LinkedHashMap<String, String> lexerRules = new LinkedHashMap<>();
 		for (ParseTree node : literalNodes) {
 			String literal = node.getText();
 			String ruleText = String.format("%s : %s ;",
@@ -91,7 +91,7 @@ public class GenerateLexerRulesForLiteralsAction extends AnAction {
 		}
 
 		final LiteralChooser chooser =
-			new LiteralChooser(project, new ArrayList<String>(lexerRules.values()));
+			new LiteralChooser(project, new ArrayList<>(lexerRules.values()));
 		chooser.show();
 		List<String> selectedElements = chooser.getSelectedElements();
 		// chooser disposed automatically.
@@ -99,18 +99,15 @@ public class GenerateLexerRulesForLiteralsAction extends AnAction {
 		final Editor editor = e.getData(PlatformDataKeys.EDITOR);
 		final Document doc = editor.getDocument();
 		final CommonTokenStream tokens = (CommonTokenStream) parser.getTokenStream();
-//		System.out.println(selectedElements);
 		if (selectedElements != null) {
 			String text = doc.getText();
 			int cursorOffset = editor.getCaretModel().getOffset();
 			// make sure it's not in middle of rule; put between.
-//					System.out.println("offset "+cursorOffset);
 			Collection<ParseTree> allRuleNodes = XPath.findAll(tree, "//ruleSpec", parser);
 			for (ParseTree r : allRuleNodes) {
 				Interval extent = r.getSourceInterval(); // token indexes
 				int start = tokens.get(extent.a).getStartIndex();
 				int stop = tokens.get(extent.b).getStopIndex();
-//						System.out.println("rule "+r.getChild(0).getText()+": "+start+".."+stop);
 				if (cursorOffset < start) {
 					// before this rule, so must be between previous and this one
 					cursorOffset = start; // put right before this rule

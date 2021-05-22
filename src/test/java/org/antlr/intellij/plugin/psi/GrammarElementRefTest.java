@@ -1,16 +1,29 @@
 package org.antlr.intellij.plugin.psi;
 
+import com.intellij.openapi.editor.markup.RangeHighlighter;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiReference;
-import com.intellij.testFramework.fixtures.LightCodeInsightFixtureTestCase;
+import com.intellij.testFramework.fixtures.LightPlatformCodeInsightFixtureTestCase;
 import org.antlr.intellij.plugin.ANTLRv4FileRoot;
+import org.antlr.intellij.plugin.ANTLRv4PluginController;
+import org.antlr.intellij.plugin.TestUtils;
 import org.jetbrains.annotations.Nullable;
 
-import java.io.PrintWriter;
-import java.io.StringWriter;
 import java.util.function.Consumer;
 
-public class GrammarElementRefTest extends LightCodeInsightFixtureTestCase {
+public class GrammarElementRefTest extends LightPlatformCodeInsightFixtureTestCase {
+
+	public void testHighlightUsagesOfLexerRule() {
+		RangeHighlighter[] usages = myFixture.testHighlightUsages("SimpleGrammar.g4");
+
+		assertEquals(5, usages.length);
+	}
+
+	public void testHighlightUsagesOfParserRule() {
+		RangeHighlighter[] usages = myFixture.testHighlightUsages("SimpleGrammar2.g4");
+
+		assertEquals(3, usages.length);
+	}
 
 	public void testReferenceToLexerRule() {
 		myFixture.configureByFiles("SimpleGrammar.g4");
@@ -128,26 +141,48 @@ public class GrammarElementRefTest extends LightCodeInsightFixtureTestCase {
 		myFixture.configureByFiles("FooParser.g4", "FooLexer.g4");
 
 		moveCaret(55);
-		assertResolvedMatches(ANTLRv4FileRoot.class, file -> {
-			assertEquals("FooLexer.g4", file.getName());
+		assertResolvedMatches(ANTLRv4FileRoot.class, file -> assertEquals("FooLexer.g4", file.getName()));
+	}
+
+	public void testReferencesToTokenVocabFileString() {
+		myFixture.configureByFiles("FooParser2.g4", "FooLexer.g4");
+
+		moveCaret(55);
+		assertResolvedMatches(ANTLRv4FileRoot.class, file -> assertEquals("FooLexer.g4", file.getName()));
+	}
+
+	public void testReferenceToImportedFile() {
+		myFixture.configureByFiles("importing.g4", "imported.g4");
+
+		moveCaret(35);
+		assertResolvedMatches(ANTLRv4FileRoot.class, file -> assertEquals("imported.g4", file.getName()));
+	}
+
+	public void testReferenceToRuleInImportedFile() {
+		myFixture.configureByFiles("importing.g4", "imported.g4", "imported2.g4", "imported3.g4");
+
+		moveCaret(53);
+		assertResolvedMatches(LexerRuleSpecNode.class, node -> assertEquals("Foo", node.getName()));
+
+		moveCaret(66);
+		assertResolvedMatches(LexerRuleSpecNode.class, node -> {
+			assertEquals("Bar", node.getName());
+			assertEquals("imported2.g4", node.getContainingFile().getName());
+		});
+
+		moveCaret(80);
+		assertResolvedMatches(LexerRuleSpecNode.class, node -> {
+			assertEquals("Baz", node.getName());
+			assertEquals("imported3.g4", node.getContainingFile().getName());
 		});
 	}
 
 	@Override
 	protected void tearDown() throws Exception {
-		try {
-			super.tearDown();
-		} catch (RuntimeException e) {
-			// We don't want to release the editor in the Tool Output tool window, so we ignore
-			// ObjectNotDisposedExceptions related to this particular editor
-			if (e.getClass().getName().equals("com.intellij.openapi.util.TraceableDisposable.ObjectNotDisposedException")) {
-				StringWriter stringWriter = new StringWriter();
-				e.printStackTrace(new PrintWriter(stringWriter));
-				if (!stringWriter.toString().contains("ANTLRv4PluginController.createToolWindows")) {
-					throw e;
-				}
-			}
-		}
+		// This can avoid exceptions
+		ANTLRv4PluginController.getInstance(getProject()).getConsole().setOutputPaused(true);
+
+		TestUtils.tearDownIgnoringObjectNotDisposedException(() -> super.tearDown());
 	}
 
 	private <T extends PsiElement> void assertResolvedMatches(Class<T> expectedClass, @Nullable Consumer<T> matcher) {
@@ -184,7 +219,7 @@ public class GrammarElementRefTest extends LightCodeInsightFixtureTestCase {
 
 	@Nullable
 	private PsiElement resolveRefAtCaret() {
-		PsiElement elementAtCaret = getFile().findElementAt(myFixture.getCaretOffset());
+		PsiElement elementAtCaret = myFixture.getFile().findElementAt(myFixture.getCaretOffset());
 
 		if (elementAtCaret != null) {
 			PsiReference ref = elementAtCaret.getReference();

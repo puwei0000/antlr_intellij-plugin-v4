@@ -112,7 +112,7 @@ public class ANTLRv4FoldingBuilder extends CustomFoldingBuilder {
     }
 
     private static void addCommentDescriptors(List<FoldingDescriptor> descriptors, PsiElement root) {
-        Set<PsiElement> processedComments = new HashSet<PsiElement>();
+        Set<PsiElement> processedComments = new HashSet<>();
         for (PsiElement comment : MyPsiUtils.findChildrenOfType(root, ANTLRv4TokenTypes.COMMENTS)) {
             IElementType type = comment.getNode().getElementType();
             if (processedComments.contains(comment)) continue;
@@ -127,11 +127,13 @@ public class ANTLRv4FoldingBuilder extends CustomFoldingBuilder {
     private static void addActionFoldingDescriptors(List<FoldingDescriptor> descriptors, PsiElement root) {
         for (AtAction atAction : PsiTreeUtil.findChildrenOfType(root, AtAction.class)) {
             PsiElement action = atAction.getLastChild();
-            descriptors.add(new FoldingDescriptor(atAction, action.getTextRange()));
+            String actionText = action.getText();
+            if ( actionText != null && actionText.contains("\n")) {
+                descriptors.add(new FoldingDescriptor(atAction, action.getTextRange()));
+            }
         }
     }
 
-    @SuppressWarnings("unchecked")
     private static void addRuleRefFoldingDescriptors(List<FoldingDescriptor> descriptors, PsiElement root) {
         for (RuleSpecNode specNode : PsiTreeUtil.findChildrenOfType(root, RuleSpecNode.class)) {
             GrammarElementRefNode refNode = PsiTreeUtil.findChildOfAnyType(specNode, GrammarElementRefNode.class);

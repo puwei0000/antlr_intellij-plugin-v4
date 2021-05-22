@@ -148,7 +148,7 @@ public class RefactorUtils {
 	{
 		WriteCommandAction setTextAction = new WriteCommandAction(project) {
 			@Override
-			protected void run(final Result result) throws Throwable {
+			protected void run(final Result result) {
 				doc.replaceString(start, stop+1, text);
 			}
 		};
@@ -161,7 +161,7 @@ public class RefactorUtils {
 	{
 		WriteCommandAction setTextAction = new WriteCommandAction(project) {
 			@Override
-			protected void run(final Result result) throws Throwable {
+			protected void run(final Result result) {
 				doc.insertString(where, text);
 			}
 		};
@@ -197,7 +197,7 @@ public class RefactorUtils {
 	}
 
 	public static List<TerminalNode> getAllRuleRefNodes(Parser parser, ParseTree tree, String ruleName) {
-		List<TerminalNode> nodes = new ArrayList<TerminalNode>();
+		List<TerminalNode> nodes = new ArrayList<>();
 		Collection<ParseTree> ruleRefs;
 		if ( Grammar.isTokenName(ruleName) ) {
 			ruleRefs = XPath.findAll(tree, "//lexerRuleBlock//TOKEN_REF", parser);
@@ -227,11 +227,5 @@ public class RefactorUtils {
 			getAncestorWithType(selNode, ANTLRv4Parser.RuleSpecContext.class);
 
 		return ruleRoot.getStop().getStopIndex() + 2; // insert after '\n' following ';'
-
-//		int ruleIndex = childIndexOf(ruleRoot.getParent(), ruleRoot);
-//		ParserRuleContext nextRuleRoot = (ParserRuleContext)ruleRoot.getParent().getChild(ruleIndex+1);
-//		if ( nextRuleRoot==null ) { // this rule must be last in grammar; put after ';' of this rule
-//		}
-//		return nextRuleRoot.getStart().getStartIndex();
 	}
 }

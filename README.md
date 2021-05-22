@@ -1,12 +1,12 @@
-# IntelliJ Idea Plugin for ANTLR v4 [![Build Travis-CI Status](https://travis-ci.org/antlr/intellij-plugin-v4.svg?branch=master)](https://travis-ci.org/antlr/intellij-plugin-v4) [![Latest version](https://img.shields.io/jetbrains/plugin/v/7358.svg?label=latest%20version)](https://plugins.jetbrains.com/plugin/7358) ![Downloads](https://img.shields.io/jetbrains/plugin/d/7358.svg)
+# IntelliJ Idea Plugin for ANTLR v4 ![Java CI](https://github.com/antlr/intellij-plugin-v4/workflows/Java%20CI/badge.svg?branch=master) [![Latest version](https://img.shields.io/jetbrains/plugin/v/7358.svg?label=latest%20version)](https://plugins.jetbrains.com/plugin/7358) ![Downloads](https://img.shields.io/jetbrains/plugin/d/7358.svg)
 
-An [IntelliJ](https://www.jetbrains.com/idea/) 2016.1 .. 2019.2 plugin for ANTLR v4 ([plugin source at github](https://github.com/antlr/intellij-plugin-v4)).
+An [IntelliJ](https://www.jetbrains.com/idea/) 2017.1 .. 2020.3 plugin for ANTLR v4 ([plugin source at github](https://github.com/antlr/intellij-plugin-v4)).
 
 [Plugin page at intellij](http://plugins.jetbrains.com/plugin/7358?pr=idea)
 
-This plugin is for ANTLR v4 grammars and includes ANTLR 4.7.2. Works with Intellij and other Jetbrains IDEs.
+This plugin is for ANTLR v4 grammars and includes ANTLR 4.9.1. Works with IntelliJ IDEA and other IntelliJ-based IDEs.
 
-Features:
+## Features:
 
 - syntax highlighting
 - syntax error checking
@@ -55,9 +55,18 @@ will bring up a list of things you can generate. The only one so far is
 a generator to create lexical rules for any literals, referenced in the parser
  grammar, that have not been defined.
 
+## Limitations
+
+The `ANTLR Preview` window is based on a grammar interpreter, not on the actual generated parser. 
+This means that things like actions and predicates will not be evaluated during live preview,
+because the interpreter is language agnostic. 
+
+For the same reasons, if your parser and/or lexer classes extend a custom implementation of the 
+base parser/lexer classes, your custom code will *not* be run during live preview. 
+
 ## History
 
-See [Releases](PerGramma://github.com/antlr/intellij-plugin-v4/releases)
+See [Releases](https://github.com/antlr/intellij-plugin-v4/releases)
 
 ## Screenshots
 
@@ -162,13 +171,22 @@ Even when a grammar is getting a single interpretation of the input, we often wo
 
 ![Live preview](images/color-prefs.png)
 
-# Build notes
+# Contributing
 
-We [moved to gradle](https://github.com/antlr/intellij-plugin-v4/pull/295) for 1.9. I added minimal notes to the readme but basically enable gradle, plugin development plugins from intellij preferences, add the gradle file via gradle tool pane then launch `runIde` task.  Gotta set the jdk to normal jdk not intellij application folder (like I have in `/opt`).  Do this to run:
+We [moved to Gradle](https://github.com/antlr/intellij-plugin-v4/pull/295) for 1.9. To contribute to the project, 
+you need a recent version of IntelliJ IDEA (either Community or Ultimate) with the `Gradle` and `Plugin DevKit` 
+plugins enabled. 
+
+Use `File > Open` and select the `build.gradle` file to import the project. Once everything is imported, you can run a 
+sandboxed IDE using the `runIde` task, either from the `Gradle` tool window of from the CLI:
 
 ```
 cd ~/antlr/code/intellij-plugin-v4
-gradle runIdea
+./gradlew runIde
 ```
 
-Or from gradle build pane, `runIde`.  
+To launch unit tests, run `./gradlew check`.
+
+To build a zipped version of the plugin and its dependencies, run `./gradlew buildPlugin`.
+
+A high level description of how the plugin works can be found in `ARCHITECTURE.md`.

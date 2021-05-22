@@ -1,15 +1,23 @@
 package org.antlr.intellij.plugin.configdialogs;
 
-import com.intellij.ide.util.PropertiesComponent;
+import com.intellij.openapi.Disposable;
 import com.intellij.openapi.options.SearchableConfigurable;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.util.Disposer;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 
-public class ANTLRv4ProjectSettings implements SearchableConfigurable {
+import static org.antlr.intellij.plugin.configdialogs.ANTLRv4GrammarPropertiesStore.getGrammarProperties;
+
+/**
+ * The UI that allows viewing/modifying default grammar settings for an entire project.
+ *
+ * @see ConfigANTLRPerGrammar
+ */
+public class ANTLRv4ProjectSettings implements SearchableConfigurable, Disposable {
 
     private ConfigANTLRPerGrammar configurationForm;
 
@@ -23,6 +31,12 @@ public class ANTLRv4ProjectSettings implements SearchableConfigurable {
     @Override
     public String getId() {
         return "ANTLR4ProjectSettings";
+    }
+
+    @Nullable
+    @Override
+    public Runnable enableSearch(String option) {
+        return null;
     }
 
     @Nls(capitalization = Nls.Capitalization.Title)
@@ -40,12 +54,13 @@ public class ANTLRv4ProjectSettings implements SearchableConfigurable {
     @Override
     public JComponent createComponent() {
         configurationForm = ConfigANTLRPerGrammar.getProjectSettingsForm(project, ANTLRv4GrammarProperties.PROJECT_SETTINGS_PREFIX);
-        return configurationForm.$$$getRootComponent$$$();
+        return configurationForm.createCenterPanel();
     }
 
     @Override
     public boolean isModified() {
-        return configurationForm.isModified(PropertiesComponent.getInstance(project), ANTLRv4GrammarProperties.PROJECT_SETTINGS_PREFIX);
+        ANTLRv4GrammarProperties grammarProperties = getGrammarProperties(project, ANTLRv4GrammarProperties.PROJECT_SETTINGS_PREFIX);
+        return configurationForm.isModified(grammarProperties);
     }
 
     @Override
@@ -55,5 +70,15 @@ public class ANTLRv4ProjectSettings implements SearchableConfigurable {
 
     public void reset() {
         configurationForm.loadValues(project, ANTLRv4GrammarProperties.PROJECT_SETTINGS_PREFIX);
+    }
+
+    @Override
+    public void disposeUIResources() {
+        Disposer.dispose(configurationForm.getDisposable());
+    }
+
+    @Override
+    public void dispose() {
+        configurationForm = null;
     }
 }

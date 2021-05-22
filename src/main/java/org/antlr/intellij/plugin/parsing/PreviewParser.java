@@ -1,5 +1,6 @@
 package org.antlr.intellij.plugin.parsing;
 
+import com.intellij.openapi.progress.ProgressManager;
 import org.antlr.v4.runtime.InterpreterRuleContext;
 import org.antlr.v4.runtime.ParserRuleContext;
 import org.antlr.v4.runtime.RecognitionException;
@@ -20,12 +21,15 @@ public class PreviewParser extends GrammarParserInterpreter {
 	/** Map each preview editor token to the grammar ATN state used to match it.
 	 *  Saves us having to create special token subclass and token factory.
 	 */
-	public Map<Token, Integer> inputTokenToStateMap = new HashMap<Token, Integer>();
+	public Map<Token, Integer> inputTokenToStateMap = new HashMap<>();
+
+	private final LexerWatchdog lexerWatchdog;
 
 	protected int lastSuccessfulMatchState = ATNState.INVALID_STATE_NUMBER; // not sure about error nodes
 
 	public PreviewParser(Grammar g, ATN atn, TokenStream input) {
 		super(g, atn, input);
+		lexerWatchdog = new LexerWatchdog(input, this);
 	}
 
 	public PreviewParser(Grammar g, TokenStream input) {
@@ -46,9 +50,10 @@ public class PreviewParser extends GrammarParserInterpreter {
 
 	@Override
 	protected int visitDecisionState(DecisionState p) {
+		ProgressManager.checkCanceled();
+
 		int predictedAlt = super.visitDecisionState(p);
 		if ( p.getNumberOfTransitions()>1 ) {
-//			System.out.println("decision "+p.decision+": "+predictedAlt);
 			if ( p.decision==this.overrideDecision &&
 			this._input.index()==this.overrideDecisionInputIndex ) {
 				((PreviewInterpreterRuleContext)overrideDecisionRoot).isDecisionOverrideRoot = true;
@@ -60,19 +65,20 @@ public class PreviewParser extends GrammarParserInterpreter {
 
 	@Override
 	public Token match(int ttype) throws RecognitionException {
-//		System.out.println("match ATOM state " + getState() + ": " + _input.LT(1));
+		lexerWatchdog.checkLexerIsNotStuck();
+
 		Token t = super.match(ttype);
 		// track which ATN state matches each token
 		inputTokenToStateMap.put(t, getState());
 		lastSuccessfulMatchState = getState();
-//		CommonToken tokenInGrammar = previewState.stateToGrammarRegionMap.get(getState());
 		return t;
 	}
 
 
 	@Override
 	public Token matchWildcard() throws RecognitionException {
-//		System.out.println("match anything state "+getState());
+		lexerWatchdog.checkLexerIsNotStuck();
+
 		inputTokenToStateMap.put(_input.LT(1), getState());
 		lastSuccessfulMatchState = getState();
 		return super.matchWildcard();

@@ -28,8 +28,9 @@
  *  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/** A grammar for ANTLR v4 written in ANTLR v4.
-*/
+/**
+ * A grammar for ANTLR v4 written in ANTLR v4.
+ */
 parser grammar ANTLRv4Parser;
 
 options {
@@ -38,8 +39,8 @@ options {
 
 // The main entry point for parsing a v4 grammar.
 grammarSpec
-	:	DOC_COMMENT?
-		grammarType id SEMI
+	:	DOC_COMMENT*
+		grammarType identifier SEMI
 		prequelConstruct*
 		rules
 		modeSpec*
@@ -64,53 +65,58 @@ prequelConstruct
 	|	action
 	;
 
-// A list of options that affect analysis and/or code generation
+// ------------
+// Options - things that affect analysis and/or code generation
 optionsSpec
-	:	OPTIONS (option SEMI)* RBRACE
+	:	OPTIONS LBRACE (option SEMI)* RBRACE
 	;
 
 option
-	:	id ASSIGN optionValue
+	:	identifier ASSIGN optionValue
 	;
 
 optionValue
-	:	id (DOT id)*
+	:	identifier (DOT identifier)*
 	|	STRING_LITERAL
 	|	actionBlock
 	|	INT
 	;
+
+// ------------
+// Delegates
 
 delegateGrammars
 	:	IMPORT delegateGrammar (COMMA delegateGrammar)* SEMI
 	;
 
 delegateGrammar
-	:	id ASSIGN id
-	|	id
+	:	identifier ASSIGN identifier
+	|	identifier
 	;
 
+// ------------
+// Tokens & Channels
+
 tokensSpec
-	:	TOKENS idList? RBRACE
+	:	TOKENS LBRACE idList? RBRACE
 	;
 
 channelsSpec
-	:	CHANNELS idList? RBRACE
+	:	CHANNELS LBRACE idList? RBRACE
 	;
 
 idList
-	: id ( COMMA id )* COMMA?
+	: identifier ( COMMA identifier )* COMMA?
 	;
 
-/** Match stuff like @parser::members {int i;} */
+// Match stuff like @parser::members {int i;}
 action
-	:	AT (actionScopeName COLONCOLON)? id actionBlock
+	:	AT (actionScopeName COLONCOLON)? identifier actionBlock
 	;
 
-/** Sometimes the scope names will collide with keywords; allow them as
- *  ids for action scopes.
- */
+   // Scope names could collide with keywords; allow them as ids for action scopes
 actionScopeName
-	:	id
+	:	identifier
 	|	LEXER
 	|	PARSER
 	;
@@ -124,7 +130,7 @@ argActionBlock
    ;
 
 modeSpec
-	:	MODE id SEMI lexerRule*
+	:	MODE identifier SEMI lexerRule*
 	;
 
 rules
@@ -137,7 +143,7 @@ ruleSpec
 	;
 
 parserRuleSpec
-	:	DOC_COMMENT?
+	:	DOC_COMMENT*
         RULE_REF argActionBlock?
         ruleReturns? throwsSpec? localsSpec?
 		rulePrequel*
@@ -168,6 +174,9 @@ ruleReturns
 	:	RETURNS argActionBlock
 	;
 
+// --------------
+// Exception spec
+
 throwsSpec
 	:	THROWS qid (COMMA qid)*
 	;
@@ -178,7 +187,7 @@ localsSpec
 
 /** Match stuff like @init {int i;} */
 ruleAction
-	:	AT id actionBlock
+	:	AT identifier actionBlock
 	;
 
 ruleBlock
@@ -190,11 +199,14 @@ ruleAltList
 	;
 
 labeledAlt
-	:	alternative (POUND id)?
+	:	alternative (POUND identifier)?
 	;
 
+// --------------------
+// Lexer rules
+
 lexerRule
-	:	DOC_COMMENT? FRAGMENT?
+	:	DOC_COMMENT* FRAGMENT?
 		TOKEN_REF COLON lexerRuleBlock SEMI
 	;
 
@@ -209,6 +221,7 @@ lexerAltList
 lexerAlt
 	:	lexerElements lexerCommands?
 	|
+   // explicitly allow empty alts
 	;
 
 lexerElements
@@ -224,7 +237,7 @@ lexerElement
 	;
 
 labeledLexerElement
-	:	id (ASSIGN|PLUS_ASSIGN)
+	:	identifier (ASSIGN|PLUS_ASSIGN)
 		(	lexerAtom
 		|	lexerBlock
 		)
@@ -245,26 +258,31 @@ lexerCommand
 	;
 
 lexerCommandName
-	:	id
+	:	identifier
 	|	MODE
 	;
 
 lexerCommandExpr
-	:	id
+	:	identifier
 	|	INT
 	;
+
+// --------------------
+// Rule Alts
 
 altList
 	:	alternative (OR alternative)*
 	;
 
 alternative
-	:	elementOptions? element*
+	:	elementOptions? element+
+    |
+    // explicitly allow empty alts
 	;
 
 element
-	:	labeledElement ebnfSuffix?
-	|	atom ebnfSuffix?
+	:	labeledElement (ebnfSuffix |)
+	|	atom (ebnfSuffix |)
 	|	ebnf
 	|	actionElement // SEMPRED is ACTION followed by QUESTION
 	;
@@ -274,11 +292,14 @@ actionElement
     ;
 
 labeledElement
-	:	id (ASSIGN|PLUS_ASSIGN)
+	:	identifier (ASSIGN|PLUS_ASSIGN)
 		(	atom
 		|	block
 		)
 	;
+
+// --------------------
+// EBNF and blocks
 
 ebnf:	block blockSuffix?
 	;
@@ -310,6 +331,9 @@ atom
 	|	DOT elementOptions?
 	;
 
+// --------------------
+// Inverted element set
+
 notSet
 	:	NOT setElement
 	|	NOT blockSet
@@ -326,6 +350,9 @@ setElement
 	|	LEXER_CHAR_SET
 	;
 
+// -------------
+// Grammar Block
+
 block
 	:	LPAREN
 		( optionsSpec? ruleAction* COLON )?
@@ -333,9 +360,15 @@ block
 		RPAREN
 	;
 
+// ----------------
+// Parser rule ref
+
 ruleref
 	:	RULE_REF argActionBlock? elementOptions?
 	;
+
+// ---------------
+// Character Range
 
 range
 	: STRING_LITERAL RANGE STRING_LITERAL
@@ -356,12 +389,12 @@ elementOption
 	:	// This format indicates the default node option
 		qid
 	|	// This format indicates option assignment
-		id ASSIGN optionValue
+		identifier ASSIGN optionValue
 	;
 
-id	:	RULE_REF
+identifier	:	RULE_REF
 	|	TOKEN_REF
 	;
 
-qid : id (DOT id)*
+qid : identifier (DOT identifier)*
     ;
