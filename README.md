@@ -1,6 +1,6 @@
 # IntelliJ Idea Plugin for ANTLR v4 ![Java CI](https://github.com/antlr/intellij-plugin-v4/workflows/Java%20CI/badge.svg?branch=master) [![Latest version](https://img.shields.io/jetbrains/plugin/v/7358.svg?label=latest%20version)](https://plugins.jetbrains.com/plugin/7358) ![Downloads](https://img.shields.io/jetbrains/plugin/d/7358.svg)
 
-An [IntelliJ](https://www.jetbrains.com/idea/) 2017.1 .. 2020.3 plugin for ANTLR v4 ([plugin source at github](https://github.com/antlr/intellij-plugin-v4)).
+An [IntelliJ](https://www.jetbrains.com/idea/) 2018.3 .. 2021.x plugin for ANTLR v4 ([plugin source at github](https://github.com/antlr/intellij-plugin-v4)).
 
 [Plugin page at intellij](http://plugins.jetbrains.com/plugin/7358?pr=idea)
 
@@ -21,7 +21,7 @@ This plugin is for ANTLR v4 grammars and includes ANTLR 4.9.1. Works with Intell
 - generates Java code; shortcut (ctrl-shift-G / meta-shift-G) but it's in Tools menu and popups.
 - code completion for tokens, rule names;
 - finds tokenVocab option for code gen if there is a tokenVocab option, don't warn about implicit tokens.
-- handles separate parsers and lectures like TParser.g4 and TLexer.g4 (1.7)
+- handles separate parsers and lexers like TParser.g4 and TLexer.g4 (1.7)
 - Parse tree nodes show the alternative number the parser chose to match that node. (1.7)
 - has live grammar interpreter for grammar preview. Right click on rule and say "Test ANTLR Rule".
 - can view parse trees for input matched in more than one way (ambiguities) (1.7)
@@ -188,5 +188,7 @@ cd ~/antlr/code/intellij-plugin-v4
 To launch unit tests, run `./gradlew check`.
 
 To build a zipped version of the plugin and its dependencies, run `./gradlew buildPlugin`.
+
+You can tweak the version of the IntelliJ platform used to build/test the plugin in `gradle.properties`. Versions prior to 2018.1.5 require a JDK 1.8, but later versions also support JDK 9+.
 
 A high level description of how the plugin works can be found in `ARCHITECTURE.md`.

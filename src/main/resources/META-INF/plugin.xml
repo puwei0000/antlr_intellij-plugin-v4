@@ -7,7 +7,7 @@
   <description><![CDATA[
   <p>
       This plugin is for ANTLR v4 grammars and includes ANTLR 4.9.1. It works with
-      2017.1-2020.3.  It should work in other JetBrains IDEs.
+      2018.3-2021.x.  It should work in other JetBrains IDEs.
      </p>
 
      <ul>
@@ -25,7 +25,7 @@
      <li> generates parser code; shortcut (ctrl-shift-G / meta-shift-G) but it's in Tools menu and popups.
      <li> code completion for tokens, rule names;
      <li> finds tokenVocab option for code gen if there is a tokenVocab option, don't warn about implicit tokens.
-     <li> handles separate parsers and lectures like TParser.g4 and TLexer.g4 (1.7)
+     <li> handles separate parsers and lexers like TParser.g4 and TLexer.g4 (1.7)
      <li> Parse tree nodes show the alternative number the parser chose to match that node. (1.7)
      <li> has live grammar interpreter for grammar preview. Right click on rule and say "Test ANTLR Rule".
      <li> view parse trees in hierarchy (sideways tree) view. (1.8)
@@ -73,14 +73,16 @@ For really big files and slow grammars, there is an appreciable delay when displ
 
   <change-notes><![CDATA[
 	<ul>
-	    <li>xxx (<a href="https://github.com/antlr/intellij-plugin-v4/issues/xxx">#xxx</a>)</li>
+	    <li>Added a new 'Tokens' tab in the preview (<a href="https://github.com/antlr/intellij-plugin-v4/issues/417">#417</a>)</li>
+	    <li>The profiler results now show rule names (<a href="https://github.com/antlr/intellij-plugin-v4/issues/466">#466</a>)</li>
+	    <li>Updated to ANTLR 4.9.2 (<a href="https://github.com/antlr/intellij-plugin-v4/issues/477">#477</a>)</li>
     </ul>
 	 See the complete list of <a href="https://github.com/antlr/intellij-plugin-v4/issues?q=milestone%3A1.17+is%3Aclosed">fixed issues</a>.
       ]]>
   </change-notes>
 
   <!-- please see http://confluence.jetbrains.net/display/IDEADEV/Build+Number+Ranges for description -->
-  <idea-version since-build="171"/> <!-- requires IntelliJ 2017.1+ -->
+  <idea-version since-build="183"/> <!-- requires IntelliJ 2018.3+ -->
 
   <!-- please see http://confluence.jetbrains.net/display/IDEADEV/Plugin+Compatibility+with+IntelliJ+Platform+Products
        on how to target different products -->
