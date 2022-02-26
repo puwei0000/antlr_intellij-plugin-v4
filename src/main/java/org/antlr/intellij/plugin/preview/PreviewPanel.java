@@ -6,6 +6,7 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Caret;
 import com.intellij.openapi.editor.Editor;
+import com.intellij.openapi.editor.SelectionModel;
 import com.intellij.openapi.editor.event.CaretAdapter;
 import com.intellij.openapi.editor.event.CaretEvent;
 import com.intellij.openapi.project.Project;
@@ -453,9 +454,11 @@ public class PreviewPanel extends JPanel implements ParsingResultSelectionListen
 			updateTreeViewer(previewState, previewState.parsingResult);
 			profilerPanel.setProfilerData(previewState, duration);
 			inputPanel.showParseErrors(previewState.parsingResult.syntaxErrorListener.getSyntaxErrors());
-		} else if ( previewState.startRuleName==null ) {
+		}
+		else if ( previewState.startRuleName==null ) {
 			indicateNoStartRuleInParseTreePane();
-		} else {
+		}
+		else {
 			indicateInvalidGrammarInParseTreePane();
 		}
 	}
@@ -493,19 +496,34 @@ public class PreviewPanel extends JPanel implements ParsingResultSelectionListen
 		int stopIndex;
 
 		if ( tree instanceof ParserRuleContext ) {
-			startIndex = ((ParserRuleContext) tree).getStart().getStartIndex();
-			stopIndex = ((ParserRuleContext) tree).getStop().getStopIndex();
-		} else if ( tree instanceof TerminalNode ) {
+			Token start = ((ParserRuleContext) tree).getStart();
+			Token stop = ((ParserRuleContext) tree).getStop();
+			if ( start==null || stop==null ) { // stop can be null if start is EOF; nothing to show so return
+				return;
+			}
+			startIndex = start.getStartIndex();
+			stopIndex = stop.getStopIndex();
+		}
+		else if ( tree instanceof TerminalNode ) {
 			startIndex = ((TerminalNode) tree).getSymbol().getStartIndex();
 			stopIndex = ((TerminalNode) tree).getSymbol().getStopIndex();
-		} else {
+		}
+		else {
 			return;
 		}
 
-		if ( startIndex>=0 ) {
-			Editor editor = inputPanel.getInputEditor();
-			editor.getSelectionModel().removeSelection();
-			editor.getSelectionModel().setSelection(startIndex, stopIndex + 1);
+		// ANTLRv4PluginController.parseText() lazily updates the parse tree so it's possible
+		// that we have edited the input and something triggers a click on the Hierarchy pane
+		// before the tree is done and therefore the tree parameter to this method.
+		// Avoid trying to select text outside of doc[0..stopindex] as a general rule too.
+		// It also looks like previous code was triggering an update to hierarchy view when we
+		// click in input pane which then tried to select entire token like a string. Now,
+		// text is selected in input pane only when a mouse event occurs in hierarchy pane.
+		Editor editor = inputPanel.getInputEditor();
+		if ( startIndex>=0 && stopIndex+1 <= editor.getDocument().getTextLength() ) {
+			SelectionModel selectionModel = editor.getSelectionModel();
+			selectionModel.removeSelection();
+			selectionModel.setSelection(startIndex, stopIndex + 1);
 		}
 	}
 }
