@@ -62,7 +62,8 @@ public class AltLabelTextProvider implements TreeTextProvider {
 			else {
 				return name; // don't display an alternative number if there's only one
 			}
-		} else if (node instanceof TerminalNode) {
+		}
+		else if (node instanceof TerminalNode) {
 			return getLabelForToken( ((TerminalNode)node).getSymbol() );
 		}
 		return Trees.getNodeText(node, Arrays.asList(parser.getRuleNames()));
@@ -74,6 +75,13 @@ public class AltLabelTextProvider implements TreeTextProvider {
 			return text;
 		}
 
-		return parser.getVocabulary().getSymbolicName(token.getType()) + ": \"" + text + "\"";
+		String symbolicName = parser.getVocabulary().getSymbolicName(token.getType());
+		if ( symbolicName==null ) { // it's a literal like ';' or 'return'
+			return text;
+		}
+		if ( text.toUpperCase().equals(symbolicName) ) { // IMPORT:import
+			return symbolicName;
+		}
+		return symbolicName + ":" + text;
 	}
 }

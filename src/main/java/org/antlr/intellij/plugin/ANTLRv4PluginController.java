@@ -16,13 +16,17 @@ import com.intellij.openapi.editor.event.EditorFactoryEvent;
 import com.intellij.openapi.editor.event.EditorMouseAdapter;
 import com.intellij.openapi.editor.event.EditorMouseEvent;
 import com.intellij.openapi.extensions.PluginId;
-import com.intellij.openapi.fileEditor.*;
+import com.intellij.openapi.fileEditor.FileDocumentManager;
+import com.intellij.openapi.fileEditor.FileEditorManager;
+import com.intellij.openapi.fileEditor.FileEditorManagerEvent;
+import com.intellij.openapi.fileEditor.FileEditorManagerListener;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.progress.util.BackgroundTaskUtil;
 import com.intellij.openapi.progress.util.ProgressWindow;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -32,6 +36,7 @@ import com.intellij.openapi.vfs.VirtualFileManager;
 import com.intellij.openapi.wm.ToolWindow;
 import com.intellij.openapi.wm.ToolWindowAnchor;
 import com.intellij.openapi.wm.ToolWindowManager;
+import com.intellij.psi.PsiDocumentManager;
 import com.intellij.ui.content.Content;
 import com.intellij.ui.content.ContentFactory;
 import com.intellij.util.messages.MessageBusConnection;
@@ -50,6 +55,7 @@ import java.io.File;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 
 /** This object is the controller for the ANTLR plug-in. It receives
  *  events and can send them on to its contained components. For example,
@@ -76,7 +82,7 @@ public class ANTLRv4PluginController implements ProjectComponent {
 
 	public Project project;
 	public ConsoleView console;
-	public ToolWindow consoleWindow;
+	private ToolWindow consoleWindow;
 
 	public Map<String, PreviewState> grammarToPreviewState =
 		Collections.synchronizedMap(new HashMap<>());
@@ -88,6 +94,8 @@ public class ANTLRv4PluginController implements ProjectComponent {
 
 	private ProgressIndicator parsingProgressIndicator;
 
+	private final Map<String, Long> grammarFileMods = new HashMap<>();
+
 	public ANTLRv4PluginController(Project project) {
 		this.project = project;
 	}
@@ -95,6 +103,10 @@ public class ANTLRv4PluginController implements ProjectComponent {
 	public static ANTLRv4PluginController getInstance(Project project) {
 		if ( project==null ) {
 			LOG.error("getInstance: project is null");
+			return null;
+		}
+		if ( project.isDisposed() ) {
+			LOG.error("getInstance: project is already disposed");
 			return null;
 		}
 		ANTLRv4PluginController pc = project.getComponent(ANTLRv4PluginController.class);
@@ -128,24 +140,30 @@ public class ANTLRv4PluginController implements ProjectComponent {
 		previewPanel = new PreviewPanel(project);
 
 		ContentFactory contentFactory = ContentFactory.SERVICE.getInstance();
-		Content content = contentFactory.createContent(previewPanel, "", false);
-		content.setCloseable(false);
 
-		previewWindow = toolWindowManager.registerToolWindow(PREVIEW_WINDOW_ID, true, ToolWindowAnchor.BOTTOM);
-		previewWindow.getContentManager().addContent(content);
-		previewWindow.setIcon(Icons.getToolWindow());
+		toolWindowManager.invokeLater(() -> {
+			Content content = contentFactory.createContent(previewPanel, "", false);
+			content.setCloseable(false);
+
+			previewWindow = toolWindowManager.registerToolWindow(PREVIEW_WINDOW_ID, true, ToolWindowAnchor.BOTTOM);
+			previewWindow.getContentManager().addContent(content);
+			previewWindow.setIcon(Icons.getToolWindow());
+		});
 
 		TextConsoleBuilderFactory factory = TextConsoleBuilderFactory.getInstance();
 		TextConsoleBuilder consoleBuilder = factory.createBuilder(project);
 		this.console = consoleBuilder.getConsole();
 
-		JComponent consoleComponent = console.getComponent();
-		content = contentFactory.createContent(consoleComponent, "", false);
-		content.setCloseable(false);
+		toolWindowManager.invokeLater(() -> {
+			JComponent consoleComponent = console.getComponent();
+			Content content = contentFactory.createContent(consoleComponent, "", false);
+			content.setCloseable(false);
+			content.setDisposer(console);
 
-		consoleWindow = toolWindowManager.registerToolWindow(CONSOLE_WINDOW_ID, true, ToolWindowAnchor.BOTTOM);
-		consoleWindow.getContentManager().addContent(content);
-		consoleWindow.setIcon(Icons.getToolWindow());
+			consoleWindow = toolWindowManager.registerToolWindow(CONSOLE_WINDOW_ID, true, ToolWindowAnchor.BOTTOM);
+			consoleWindow.getContentManager().addContent(content);
+			consoleWindow.setIcon(Icons.getToolWindow());
+		});
 	}
 
 	@Override
@@ -155,8 +173,6 @@ public class ANTLRv4PluginController implements ProjectComponent {
 		projectIsClosed = true;
 		uninstallListeners();
 
-		console.dispose();
-
 		for (PreviewState it : grammarToPreviewState.values()) {
 			previewPanel.inputPanel.releaseEditor(it);
 		}
@@ -165,6 +181,9 @@ public class ANTLRv4PluginController implements ProjectComponent {
 		previewWindow = null;
 		consoleWindow = null;
 		project = null;
+
+		// We can't dispose of the preview state map during unit tests
+		if (ApplicationManager.getApplication().isUnitTestMode()) return;
 		grammarToPreviewState = null;
 	}
 
@@ -237,7 +256,7 @@ public class ANTLRv4PluginController implements ProjectComponent {
 	}
 
 	/** The test ANTLR rule action triggers this event. This can occur
-	 *  only occur when the current editor the showing a grammar, because
+	 *  only occur when the current editor is showing a grammar, because
 	 *  that is the only time that the action is enabled. We will see
 	 *  a file changed event when the project loads the first grammar file.
 	 */
@@ -255,7 +274,17 @@ public class ANTLRv4PluginController implements ProjectComponent {
 	}
 
 	public void grammarFileSavedEvent(VirtualFile grammarFile) {
-		LOG.info("grammarFileSavedEvent "+grammarFile.getPath()+" "+project.getName());
+
+		Long modCount = grammarFile.getModificationCount();
+		String grammarFilePath = grammarFile.getPath();
+
+		if (grammarFileMods.containsKey(grammarFilePath) && grammarFileMods.get(grammarFilePath).equals(modCount)) {
+			return;
+		}
+
+		grammarFileMods.put(grammarFilePath, modCount);
+
+		LOG.info("grammarFileSavedEvent "+grammarFilePath+" "+project.getName());
 		updateGrammarObjectsFromFile(grammarFile, true); // force reload
 		if ( previewPanel!=null ) {
 			previewPanel.grammarFileSaved(grammarFile);
@@ -265,25 +294,32 @@ public class ANTLRv4PluginController implements ProjectComponent {
 		}
 	}
 
-	public void currentEditorFileChangedEvent(VirtualFile oldFile, VirtualFile newFile) {
+	public void currentEditorFileChangedEvent(VirtualFile oldFile, VirtualFile newFile, boolean modified) {
 		LOG.info("currentEditorFileChangedEvent "+(oldFile!=null?oldFile.getPath():"none")+
 				 " -> "+(newFile!=null?newFile.getPath():"none")+" "+project.getName());
 		if ( newFile==null ) { // all files must be closed I guess
 			return;
 		}
-		if ( newFile.getName().endsWith(".g") ) {
+
+		String newFileExt = newFile.getExtension();
+
+		if (newFileExt == null) {
+			return;
+		}
+
+		if (newFileExt.equals("g")) {
 			LOG.info("currentEditorFileChangedEvent ANTLR 4 cannot handle .g files, only .g4");
 			hidePreview();
 			return;
 		}
-		if ( !newFile.getName().endsWith(".g4") ) {
-			hidePreview();
+
+		if ( !newFileExt.equals("g4") ) {
 			return;
 		}
 
 		// When switching from a lexer grammar, update its objects in case the grammar was modified.
 		// The updated objects might be needed later by another dependant grammar.
-		if ( oldFile != null && oldFile.getName().endsWith(".g4")) {
+		if ( oldFile != null && "g4".equals(oldFile.getExtension()) && modified) {
 			updateGrammarObjectsFromFile(oldFile, true);
 		}
 
@@ -335,7 +371,9 @@ public class ANTLRv4PluginController implements ProjectComponent {
 		if (previewPanel != null) {
 			previewPanel.setEnabled(false);
 		}
-		previewWindow.hide(null);
+		if (previewWindow != null) {
+			previewWindow.hide(null);
+		}
 	}
 
 	/** Make sure to run after updating grammars in previewState */
@@ -388,6 +426,12 @@ public class ANTLRv4PluginController implements ProjectComponent {
 				previewState.g = grammars[1];
 			}
 		}
+		else {
+			synchronized (previewState) { // build atomically
+				previewState.lg = null;
+				previewState.g = null;
+			}
+		}
 		return grammarFileName;
 	}
 
@@ -421,17 +465,16 @@ public class ANTLRv4PluginController implements ProjectComponent {
 	}
 
 	public void parseText(final VirtualFile grammarFile, String inputText) {
-		// Wipes out the console and also any error annotations
-		previewPanel.inputPanel.clearParseErrors();
-
 		final PreviewState previewState = getPreviewState(grammarFile);
 
-		abortCurrentParsing();
+		// No need to parse empty text during unit tests, yet...
+		if (inputText.isEmpty() && ApplicationManager.getApplication().isUnitTestMode()) return;
 
 		// Parse text in a background thread to avoid freezing the UI if the grammar is badly written
-		// an takes ages to interpret the input.
+		// and takes forever to interpret the input.
 		parsingProgressIndicator = BackgroundTaskUtil.executeAndTryWait(
 				(indicator) -> {
+//					System.out.println("PARSE START "+Thread.currentThread().getName());
 					long start = System.nanoTime();
 
 					previewState.parsingResult = ParsingUtils.parseText(
@@ -439,6 +482,9 @@ public class ANTLRv4PluginController implements ProjectComponent {
 							grammarFile, inputText, project
 					);
 
+//					long parseTime_ns = System.nanoTime() - start;
+//					double parseTimeMS = parseTime_ns/(1000.0*1000.0);
+//					System.out.println("PARSE STOP "+Thread.currentThread().getName()+" "+parseTimeMS+"ms");
 					return () -> previewPanel.onParsingCompleted(previewState, System.nanoTime() - start);
 				},
 				() -> previewPanel.notifySlowParsing(),
@@ -453,6 +499,13 @@ public class ANTLRv4PluginController implements ProjectComponent {
 			parsingProgressIndicator = null;
 			previewPanel.onParsingCancelled();
 		}
+	}
+
+	public void startParsing() {
+		parsingProgressIndicator = null;
+		if (previewPanel == null) return;
+		previewPanel.inputPanel.clearParseErrors(); // Wipes out the console and also any error annotations
+		previewPanel.startParsing();
 	}
 
 	public PreviewPanel getPreviewPanel() {
@@ -481,13 +534,14 @@ public class ANTLRv4PluginController implements ProjectComponent {
 		// make sure only one thread tries to add a preview state object for a given file
 		String grammarFileName = grammarFile.getPath();
 		// Have we seen this grammar before?
-		PreviewState stateForCurrentGrammar = grammarToPreviewState.get(grammarFileName);
-		if ( stateForCurrentGrammar!=null ) {
-			return stateForCurrentGrammar; // seen this before
+		if (grammarToPreviewState != null) {
+			PreviewState stateForCurrentGrammar = grammarToPreviewState.get(grammarFileName);
+			if ( stateForCurrentGrammar!=null ) {
+				return stateForCurrentGrammar; // seen this before
+			}
 		}
-
 		// not seen, must create state
-		stateForCurrentGrammar = new PreviewState(project, grammarFile);
+		PreviewState stateForCurrentGrammar = new PreviewState(project, grammarFile);
 		grammarToPreviewState.put(grammarFileName, stateForCurrentGrammar);
 
 		return stateForCurrentGrammar;
@@ -572,19 +626,49 @@ public class ANTLRv4PluginController implements ProjectComponent {
 		public void contentsChanged(VirtualFileEvent event) {
 			final VirtualFile vfile = event.getFile();
 			if ( !vfile.getName().endsWith(".g4") ) return;
-			if ( !projectIsClosed && !ApplicationManager.getApplication().isUnitTestMode()) grammarFileSavedEvent(vfile);
+			if ( !projectIsClosed && !ApplicationManager.getApplication().isUnitTestMode()) {
+				grammarFileSavedEvent(vfile);
+			}
 		}
 	}
 
-	private class MyFileEditorManagerAdapter implements FileEditorManagerListener {
+	public class MyFileEditorManagerAdapter implements FileEditorManagerListener {
 		@Override
 		public void selectionChanged(FileEditorManagerEvent event) {
-			if ( !projectIsClosed ) currentEditorFileChangedEvent(event.getOldFile(), event.getNewFile());
+			if ( !projectIsClosed ) {
+				boolean modified = false;
+
+				if (event.getOldEditor() != null) {
+					if (event.getOldEditor().isModified()) {
+						modified = true;
+					} else {
+						VirtualFile oldFile = event.getOldEditor().getFile();
+						String oldFilePath = oldFile.getPath();
+						Long modCount = oldFile.getModificationCount();
+						modified = grammarFileMods.containsKey(oldFilePath) &&
+								!grammarFileMods.get(oldFilePath).equals(modCount);
+					}
+
+				}
+
+				if (modified) {
+					PsiDocumentManager psiMgr = PsiDocumentManager.getInstance(project);
+					FileDocumentManager docMgr = FileDocumentManager.getInstance();
+					Document doc = docMgr.getDocument(event.getOldFile());
+					if ( !psiMgr.isCommitted(doc) || docMgr.isDocumentUnsaved(doc) ) {
+						psiMgr.commitDocument(doc);
+						docMgr.saveDocument(doc);
+					}
+				}
+				currentEditorFileChangedEvent(event.getOldFile(), event.getNewFile(), modified);
+			}
 		}
 
 		@Override
 		public void fileClosed(FileEditorManager source, VirtualFile file) {
-			if ( !projectIsClosed ) editorFileClosedEvent(file);
+			if ( !projectIsClosed && (source != null && source.getSelectedEditor() != null && source.getSelectedEditor().getFile().equals(file)) ) {
+				editorFileClosedEvent(file);
+			}
 		}
 	}
 

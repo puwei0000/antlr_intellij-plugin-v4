@@ -6,6 +6,7 @@ import com.intellij.notification.Notification;
 import com.intellij.notification.NotificationType;
 import com.intellij.notification.Notifications;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.Task;
@@ -75,7 +76,7 @@ public class RunANTLROnGrammarFile extends Task.Modal {
 		ANTLRv4GrammarProperties grammarProperties = getGrammarProperties(project, grammarFile);
 		boolean autogen = grammarProperties.shouldAutoGenerateParser();
 		if ( forceGeneration || (autogen && isGrammarStale(grammarProperties)) ) {
-			antlr(grammarFile);
+			ReadAction.run(() -> antlr(grammarFile));
 		}
 		else {
 			ANTLRv4PluginController controller = ANTLRv4PluginController.getInstance(project);
@@ -86,7 +87,7 @@ public class RunANTLROnGrammarFile extends Task.Modal {
 				Grammar g = previewState.lg;
 				String language = g.getOptionString(ANTLRv4GrammarProperties.PROP_LANGUAGE);
 				Tool tool = ParsingUtils.createANTLRToolForLoadingGrammars(getGrammarProperties(project, grammarFile));
-				CodeGenerator gen = new CodeGenerator(tool, g, language);
+				CodeGenerator gen = CodeGenerator.create(tool, g, language);
 				gen.writeVocabFile();
 			}
 		}
@@ -106,7 +107,7 @@ public class RunANTLROnGrammarFile extends Task.Modal {
 		}
 
 		String language = g.getOptionString(ANTLRv4GrammarProperties.PROP_LANGUAGE);
-		CodeGenerator generator = new CodeGenerator(null, g, language);
+		CodeGenerator generator = CodeGenerator.create(null, g, language);
 		String recognizerFileName = generator.getRecognizerFileName();
 
 		VirtualFile contentRoot = getContentRoot(project, grammarFile);

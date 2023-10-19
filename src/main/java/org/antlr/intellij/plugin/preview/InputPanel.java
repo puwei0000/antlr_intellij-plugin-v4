@@ -9,7 +9,6 @@ import com.intellij.openapi.editor.*;
 import com.intellij.openapi.editor.event.CaretListener;
 import com.intellij.openapi.editor.event.DocumentAdapter;
 import com.intellij.openapi.editor.event.DocumentEvent;
-import com.intellij.openapi.editor.event.EditorMouseEvent;
 import com.intellij.openapi.editor.ex.EditorEx;
 import com.intellij.openapi.editor.ex.EditorMarkupModel;
 import com.intellij.openapi.editor.markup.*;
@@ -200,12 +199,18 @@ public class InputPanel {
 
 		// wipe old and make new one
 		releaseEditor(previewState);
-		Editor editor = createPreviewEditor(controller.getCurrentGrammarFile(), inputDocument, true);
+
+		VirtualFile currentGrammarFile = controller != null ? controller.getCurrentGrammarFile() : null;
+		if (currentGrammarFile == null) {
+			return;
+		}
+
+		Editor editor = createPreviewEditor(currentGrammarFile, inputDocument, true);
 		setEditorComponent(editor.getComponent()); // do before setting state
 		previewState.setInputEditor(editor);
 		clearErrorConsole();
 
-		previewPanel.updateParseTreeFromDoc(controller.getCurrentGrammarFile());
+		previewPanel.updateParseTreeFromDoc(currentGrammarFile);
 	}
 
 	public Editor createPreviewEditor(final VirtualFile grammarFile, Document doc, boolean readOnly) {
@@ -235,6 +240,12 @@ public class InputPanel {
 
 	public void grammarFileSaved() {
 		clearParseErrors();
+		if ( previewState!=null && previewState.startRuleName!=null ) {
+			setStartRuleName(previewState.grammarFile, previewState.startRuleName);
+		}
+		else {
+			resetStartRuleLabel();
+		}
 	}
 
 	public void switchToGrammar(PreviewState previewState, VirtualFile grammarFile) {
@@ -495,7 +506,8 @@ public class InputPanel {
 			for ( Pair<String, Integer> pair : smaller ) {
 				if ( pair.b>1 ) {
 					stack.add(pair.a + "^" + pair.b);
-				} else {
+				}
+				else {
 					stack.add(pair.a);
 				}
 			}
@@ -613,23 +625,28 @@ public class InputPanel {
 				// TODO: move decision event stuff to profiler?
 				if ( eventInfo instanceof AmbiguityInfo ) {
 					msg = "Ambiguous upon alts " + eventInfo.configs.getAlts().toString();
-				} else if ( eventInfo instanceof ContextSensitivityInfo ) {
+				}
+				else if ( eventInfo instanceof ContextSensitivityInfo ) {
 					msg = "Context-sensitive";
-				} else if ( eventInfo instanceof LookaheadEventInfo ) {
+				}
+				else if ( eventInfo instanceof LookaheadEventInfo ) {
 					int k = eventInfo.stopIndex - eventInfo.startIndex + 1;
 					msg = "Deepest lookahead k=" + k;
-				} else if ( eventInfo instanceof PredicateEvalInfo ) {
+				}
+				else if ( eventInfo instanceof PredicateEvalInfo ) {
 					PredicateEvalInfo evalInfo = (PredicateEvalInfo) eventInfo;
 					msg = ProfilerPanel.getSemanticContextDisplayString(evalInfo,
 							previewState,
 							evalInfo.semctx, evalInfo.predictedAlt,
 							evalInfo.evalResult);
 					msg = msg + (!evalInfo.fullCtx ? " (DFA)" : "");
-				} else {
+				}
+				else {
 					msg = "Unknown decision event: " + eventInfo;
 				}
 				foundDecisionEvent = true;
-			} else {
+			}
+			else {
 				// error tool tips
 				SyntaxError errorUnderCursor = r.getUserData(SYNTAX_ERROR);
 				msg = getErrorDisplayString(errorUnderCursor);
@@ -692,19 +709,26 @@ public class InputPanel {
 			a = offendingToken.getStartIndex();
 			b = offendingToken.getStopIndex()+1;
 		}
-		final TextAttributes attr = new TextAttributes();
-		attr.setForegroundColor(JBColor.RED);
-		attr.setEffectColor(JBColor.RED);
-		attr.setEffectType(EffectType.WAVE_UNDERSCORE);
-		RangeHighlighter highlighter =
-			markupModel.addRangeHighlighter(a,
-			                                b,
-			                                ERROR_LAYER, // layer
-			                                attr,
-			                                HighlighterTargetArea.EXACT_RANGE);
-		highlighter.putUserData(SYNTAX_ERROR, e);
-	}
 
+		// ANTLRv4PluginController.parseText() can be slow and is done lazily. That means it
+		// is possible to parse and get error messages that are no longer appropriate because
+		// the user has started altering the input after the parse was kicked off; another parse
+		// will follow up and change the error messages and location of annotations in this input panel.
+		// Avoid trying to select text outside of doc[0..stopindex] as a general rule too.
+		if (a >= 0 && b + 1 <= editor.getDocument().getTextLength()) {
+			final TextAttributes attr = new TextAttributes();
+			attr.setForegroundColor(JBColor.RED);
+			attr.setEffectColor(JBColor.RED);
+			attr.setEffectType(EffectType.WAVE_UNDERSCORE);
+			RangeHighlighter highlighter =
+					markupModel.addRangeHighlighter(a,
+							b,
+							ERROR_LAYER, // layer
+							attr,
+							HighlighterTargetArea.EXACT_RANGE);
+			highlighter.putUserData(SYNTAX_ERROR, e);
+		}
+	}
 
 	public static void removeHighlighters(Editor editor, Key<?> key) {
 		// Remove anything with user data accessible via key

@@ -61,7 +61,7 @@ public class ParsingUtils {
 		i++; // search after current i token
 		if ( i>=n || i<0 ) return null;
 		Token t = tokens.get(i);
-		while ( t.getChannel()==Token.HIDDEN_CHANNEL ) {
+		while ( t.getChannel()!=Token.DEFAULT_CHANNEL ) {  // Parser must parse tokens on DEFAULT_CHANNEL
 			if ( t.getType()==Token.EOF ) {
 				TokenSource tokenSource = tokens.getTokenSource();
 				if ( tokenSource==null ) {
@@ -85,7 +85,7 @@ public class ParsingUtils {
 		i--; // search before current i token
 		if ( i>=size || i<0 ) return null;
 		Token t = tokens.get(i);
-		while ( t.getChannel()==Token.HIDDEN_CHANNEL ) {
+		while ( t.getChannel()!=Token.DEFAULT_CHANNEL ) { // Parser must parse tokens on DEFAULT_CHANNEL
 			i--;
 			if ( i<0 ) return null;
 			t = tokens.get(i);
@@ -199,6 +199,12 @@ public class ParsingUtils {
 										  final VirtualFile grammarFile,
 										  String inputText,
 										  Project project) {
+		if ( g==null || lg==null ) {
+			ANTLRv4PluginController.LOG.info("parseText can't parse: missing lexer or parser no Grammar object for " +
+					(grammarFile != null ? grammarFile.getName() : "<unknown file>"));
+			return null;
+		}
+
 		ANTLRv4GrammarProperties grammarProperties = getGrammarProperties(project, grammarFile);
 		CharStream input = grammarProperties.getCaseChangingStrategy()
 				.applyTo(CharStreams.fromString(inputText, grammarFile.getPath()));
@@ -208,22 +214,15 @@ public class ParsingUtils {
 		lexEngine.removeErrorListeners();
 		lexEngine.addErrorListener(syntaxErrorListener);
 		CommonTokenStream tokens = new TokenStreamSubset(lexEngine);
-		return parseText(g, lg, startRuleName, grammarFile, syntaxErrorListener, tokens, 0);
+		return parseText(g, lg, startRuleName, syntaxErrorListener, tokens, 0);
 	}
 
-	public static ParsingResult parseText(Grammar g,
+	private static ParsingResult parseText(Grammar g,
 										  LexerGrammar lg,
 										  String startRuleName,
-										  final VirtualFile grammarFile,
 										  SyntaxErrorListener syntaxErrorListener,
 										  TokenStream tokens,
 										  int startIndex) {
-		if ( g==null || lg==null ) {
-			ANTLRv4PluginController.LOG.info("parseText can't parse: missing lexer or parser no Grammar object for " +
-											 (grammarFile != null ? grammarFile.getName() : "<unknown file>"));
-			return null;
-		}
-
 		String grammarFileName = g.fileName;
 		if (!new File(grammarFileName).exists()) {
 			ANTLRv4PluginController.LOG.info("parseText grammar doesn't exist "+grammarFileName);
@@ -384,7 +383,8 @@ public class ParsingUtils {
 				lg = (LexerGrammar) loadGrammar(lexerGrammarFile, antlr);
 				if ( lg!=null ) {
 					antlr.process(lg, false);
-				} else {
+				}
+				else {
 					reportBadGrammar(lexerGrammarFile, console);
 				}
 			}

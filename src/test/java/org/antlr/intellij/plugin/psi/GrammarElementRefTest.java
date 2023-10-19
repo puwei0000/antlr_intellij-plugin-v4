@@ -1,5 +1,6 @@
 package org.antlr.intellij.plugin.psi;
 
+import com.intellij.openapi.editor.markup.RangeHighlighter;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiReference;
 import com.intellij.testFramework.fixtures.LightPlatformCodeInsightFixtureTestCase;
@@ -13,14 +14,26 @@ import java.util.Collection;
 import java.util.function.Consumer;
 
 public class GrammarElementRefTest extends LightPlatformCodeInsightFixtureTestCase {
-	public void testHighlightUsagesOfLexerRule() {
+	public void testFindUsagesOfLexerRule() {
 		Collection<UsageInfo> ruleUsages = myFixture.testFindUsages("SimpleGrammar.g4");
-		assertEquals(4, ruleUsages.size());
+		assertEquals(3, ruleUsages.size());
+	}
+
+	public void testFindUsagesOfParserRule() {
+		Collection<UsageInfo> ruleUsages = myFixture.testFindUsages("SimpleGrammar2.g4");
+		assertEquals(1, ruleUsages.size());
+	}
+
+	public void testHighlightUsagesOfLexerRule() {
+		RangeHighlighter[] usages = myFixture.testHighlightUsages("SimpleGrammar.g4");
+
+		assertEquals(4, usages.length);
 	}
 
 	public void testHighlightUsagesOfParserRule() {
-		Collection<UsageInfo> ruleUsages = myFixture.testFindUsages("SimpleGrammar2.g4");
-		assertEquals(2, ruleUsages.size());
+		RangeHighlighter[] usages = myFixture.testHighlightUsages("SimpleGrammar2.g4");
+
+		assertEquals(2, usages.length);
 	}
 
 	public void testReferenceToLexerRule() {
@@ -202,7 +215,7 @@ public class GrammarElementRefTest extends LightPlatformCodeInsightFixtureTestCa
 
 		if (psiElement != null) {
 			fail("Expected element at offset " + myFixture.getCaretOffset() + " to resolve to nothing, but resolved to "
-					+ psiElement);
+				+ psiElement);
 		}
 	}
 
@@ -224,10 +237,12 @@ public class GrammarElementRefTest extends LightPlatformCodeInsightFixtureTestCa
 
 			if (ref != null) {
 				return ref.resolve();
-			} else {
+			}
+			else {
 				fail("No reference at caret");
 			}
-		} else {
+		}
+		else {
 			fail("No element at caret");
 		}
 

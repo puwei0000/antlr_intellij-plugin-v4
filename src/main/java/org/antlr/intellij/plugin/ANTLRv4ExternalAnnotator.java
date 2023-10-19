@@ -5,6 +5,7 @@ import com.intellij.lang.annotation.Annotation;
 import com.intellij.lang.annotation.AnnotationHolder;
 import com.intellij.lang.annotation.ExternalAnnotator;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.PsiFile;
 import org.antlr.intellij.plugin.actions.AnnotationIntentActionsFactory;
@@ -34,7 +35,9 @@ public class ANTLRv4ExternalAnnotator extends ExternalAnnotator<PsiFile, List<Gr
 	@Nullable
 	@Override
 	public List<GrammarIssue> doAnnotate(final PsiFile file) {
-		return GrammarIssuesCollector.collectGrammarIssues(file);
+		return ApplicationManager.getApplication().runReadAction((Computable<List<GrammarIssue>>) () ->
+				GrammarIssuesCollector.collectGrammarIssues(file)
+		);
 	}
 
     /** Called 3rd */
@@ -46,7 +49,8 @@ public class ANTLRv4ExternalAnnotator extends ExternalAnnotator<PsiFile, List<Gr
 		for ( GrammarIssue issue : issues ) {
 			if ( issue.getOffendingTokens().isEmpty() ) {
 				annotateFileIssue(file, holder, issue);
-			} else {
+			}
+			else {
 				annotateIssue(file, holder, issue);
 			}
 		}
@@ -122,6 +126,9 @@ public class ANTLRv4ExternalAnnotator extends ExternalAnnotator<PsiFile, List<Gr
 
 		case WARNING_ONE_OFF:
 		case INFO:
+			/* When trying to remove the deprecation warning, you will need something like this:
+			AnnotationBuilder builder = holder.newAnnotation(HighlightSeverity.WEAK_WARNING, issue.getAnnotation()).range(range);
+			 */
 			return Optional.of(holder.createWeakWarningAnnotation(range, issue.getAnnotation()));
 
 		default:
